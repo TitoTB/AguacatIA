@@ -72,6 +72,17 @@ def init_db() -> None:
                 message TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS skill_messages (
+                skill_key TEXT NOT NULL,
+                message_key TEXT NOT NULL,
+                label TEXT NOT NULL,
+                value TEXT NOT NULL DEFAULT '',
+                default_value TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(skill_key, message_key),
+                FOREIGN KEY(skill_key) REFERENCES skills(key) ON DELETE CASCADE
+            );
             """
         )
         _seed_levels(conn)
@@ -100,6 +111,7 @@ def _seed_settings(conn: sqlite3.Connection) -> None:
         "owner_telegram_id": "",
         "bdevices_search_url": "http://bdevices:8010/api/agent/devices/search",
         "bdevices_agent_token": "",
+        "bdevices_ai_query_enabled": "0",
         "ai_provider": "ollama",
         "ollama_base_url": "http://ollama:11434",
         "ollama_model": "llama3.1",
@@ -192,7 +204,10 @@ def sync_skills(definitions: Iterable[dict[str, Any]]) -> None:
                 ON CONFLICT(key) DO UPDATE SET
                     title = excluded.title,
                     description = excluded.description,
-                    command = excluded.command
+                    command = CASE
+                        WHEN skills.command = '' THEN excluded.command
+                        ELSE skills.command
+                    END
                 """,
                 (
                     skill["key"],
@@ -203,6 +218,25 @@ def sync_skills(definitions: Iterable[dict[str, Any]]) -> None:
                     now,
                 ),
             )
+            for message_key, message in (skill.get("messages") or {}).items():
+                default_value = message.get("default", "")
+                conn.execute(
+                    """
+                    INSERT INTO skill_messages(skill_key, message_key, label, value, default_value, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(skill_key, message_key) DO UPDATE SET
+                        label = excluded.label,
+                        default_value = excluded.default_value
+                    """,
+                    (
+                        skill["key"],
+                        message_key,
+                        message.get("label", message_key),
+                        default_value,
+                        default_value,
+                        now,
+                    ),
+                )
 
 
 def list_skills() -> list[sqlite3.Row]:
@@ -230,11 +264,63 @@ def get_skill(key: str) -> sqlite3.Row | None:
         ).fetchone()
 
 
-def update_skill_permission(key: str, enabled: bool, required_level_id: int) -> None:
+def get_skill_by_command(command: str) -> sqlite3.Row | None:
+    with connect() as conn:
+        return conn.execute(
+            """
+            SELECT s.*, l.rank AS required_level_rank
+            FROM skills s
+            JOIN access_levels l ON l.id = s.required_level_id
+            WHERE lower(s.command) = lower(?)
+            """,
+            (command,),
+        ).fetchone()
+
+
+def list_skill_messages() -> dict[str, list[sqlite3.Row]]:
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM skill_messages ORDER BY skill_key, message_key"
+        ).fetchall()
+    grouped: dict[str, list[sqlite3.Row]] = {}
+    for row in rows:
+        grouped.setdefault(row["skill_key"], []).append(row)
+    return grouped
+
+
+def skill_messages_map(skill_key: str) -> dict[str, str]:
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT message_key, value, default_value FROM skill_messages WHERE skill_key = ?",
+            (skill_key,),
+        ).fetchall()
+    return {row["message_key"]: row["value"] or row["default_value"] for row in rows}
+
+
+def get_skill_message(skill_key: str, message_key: str, default: str = "") -> str:
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT value, default_value FROM skill_messages WHERE skill_key = ? AND message_key = ?",
+            (skill_key, message_key),
+        ).fetchone()
+    if not row:
+        return default
+    return str(row["value"] or row["default_value"] or default)
+
+
+def update_skill_config(key: str, command: str, enabled: bool, required_level_id: int) -> None:
     with connect() as conn:
         conn.execute(
-            "UPDATE skills SET enabled = ?, required_level_id = ?, updated_at = ? WHERE key = ?",
-            (1 if enabled else 0, required_level_id, utc_now(), key),
+            "UPDATE skills SET command = ?, enabled = ?, required_level_id = ?, updated_at = ? WHERE key = ?",
+            (command, 1 if enabled else 0, required_level_id, utc_now(), key),
+        )
+
+
+def update_skill_message(skill_key: str, message_key: str, value: str) -> None:
+    with connect() as conn:
+        conn.execute(
+            "UPDATE skill_messages SET value = ?, updated_at = ? WHERE skill_key = ? AND message_key = ?",
+            (value, utc_now(), skill_key, message_key),
         )
 
 
@@ -314,4 +400,3 @@ def log_command(telegram_id: str, skill_key: str, command: str, status: str, mes
 def recent_logs(limit: int = 50) -> list[sqlite3.Row]:
     with connect() as conn:
         return conn.execute("SELECT * FROM command_log ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
-

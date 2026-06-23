@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="section-heading">
+  <div>
+    <h1>Logs</h1>
+    <p>Log de comandos procesados por AguacatIA.</p>
+  </div>
+</section>
+
+<section class="panel">
+  <table>
+    <thead><tr><th>Fecha</th><th>Usuario</th><th>Skill</th><th>Estado</th><th>Mensaje</th></tr></thead>
+    <tbody>
+    {% for log in logs %}
+    <tr><td>{{ log.created_at }}</td><td>{{ log.telegram_id }}</td><td>{{ log.skill_key }}</td><td>{{ log.status }}</td><td>{{ log.message }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 from aiogram.types import Message
@@ -10,6 +10,7 @@ class SkillDefinition:
     title: str
     description: str
     command: str
+    messages: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
 @dataclass
@@ -23,4 +24,3 @@ class Skill(Protocol):
 
     async def handle(self, context: SkillContext) -> None:
         ...
-

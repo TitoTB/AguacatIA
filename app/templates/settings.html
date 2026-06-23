@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="section-heading">
+  <div>
+    <h1>Configuracion</h1>
+    <p>Conexion de Telegram, BDevices y proveedores de IA.</p>
+  </div>
+  <div class="status {{ 'ok' if bot_running else 'off' }}">
+    {{ "Bot activo" if bot_running else "Bot parado" }}
+  </div>
+</section>
+
+<form action="/settings" method="post" class="panel stack">
+  <h2>Telegram</h2>
+  <label class="check"><input type="checkbox" name="bot_enabled" {% if settings.bot_enabled == "1" %}checked{% endif %}> Bot activo</label>
+  <label>Token Telegram
+    <input name="telegram_bot_token" type="password" placeholder="{{ settings.telegram_bot_token or 'Sin configurar' }}">
+  </label>
+  <label>Owner Telegram ID
+    <input name="owner_telegram_id" value="{{ settings.owner_telegram_id }}">
+  </label>
+
+  <h2>BDevices</h2>
+  <label>URL busqueda BDevices
+    <input name="bdevices_search_url" value="{{ settings.bdevices_search_url }}">
+  </label>
+  <label>Token agente BDevices
+    <input name="bdevices_agent_token" type="password" placeholder="{{ settings.bdevices_agent_token or 'Sin configurar' }}">
+  </label>
+  <label class="check"><input type="checkbox" name="bdevices_ai_query_enabled" {% if settings.bdevices_ai_query_enabled == "1" %}checked{% endif %}> Usar IA para interpretar consultas BDevices</label>
+
+  <h2>IA</h2>
+  <label>Proveedor IA
+    <select name="ai_provider">
+      <option value="ollama" {% if settings.ai_provider == "ollama" %}selected{% endif %}>Ollama</option>
+      <option value="openai" {% if settings.ai_provider == "openai" %}selected{% endif %}>OpenAI</option>
+      <option value="gemini" {% if settings.ai_provider == "gemini" %}selected{% endif %}>Gemini</option>
+    </select>
+  </label>
+  <label>Ollama URL
+    <input name="ollama_base_url" value="{{ settings.ollama_base_url }}">
+  </label>
+  <label>Ollama modelo
+    <input name="ollama_model" value="{{ settings.ollama_model }}">
+  </label>
+  <label>OpenAI API key
+    <input name="openai_api_key" type="password" placeholder="{{ settings.openai_api_key or 'Sin configurar' }}">
+  </label>
+  <label>Gemini API key
+    <input name="gemini_api_key" type="password" placeholder="{{ settings.gemini_api_key or 'Sin configurar' }}">
+  </label>
+  <button type="submit">Guardar configuracion</button>
+</form>
+{% endblock %}

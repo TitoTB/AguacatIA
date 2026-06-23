@@ -90,7 +90,8 @@ class TelegramBotService:
             text = message.text or ""
             raw_command, _, args = text.partition(" ")
             command_name = raw_command.split("@", 1)[0].lstrip("/")
-            skill = self.registry.get_by_command(command_name)
+            skill_row = database.get_skill_by_command(command_name)
+            skill = self.registry.get(skill_row["key"]) if skill_row else self.registry.get_by_command(command_name)
             if not skill:
                 await message.answer("No conozco ese comando. Usa /ayuda.")
                 return
@@ -122,4 +123,3 @@ def _display_name(message: Message) -> str:
     if user.username:
         name = f"{name} (@{user.username})" if name else f"@{user.username}"
     return name
-

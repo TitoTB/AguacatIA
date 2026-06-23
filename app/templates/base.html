@@ -11,6 +11,14 @@
     <a class="brand" href="/">{{ app_name }}</a>
     <span class="version">v{{ app_version }}</span>
     {% if request.url.path not in ["/login", "/setup"] %}
+    <nav class="nav">
+      <a href="/" class="{{ 'active' if request.url.path == '/' else '' }}">Inicio</a>
+      <a href="/settings" class="{{ 'active' if request.url.path == '/settings' else '' }}">Configuracion</a>
+      <a href="/skills" class="{{ 'active' if request.url.path == '/skills' else '' }}">Skills</a>
+      <a href="/users" class="{{ 'active' if request.url.path == '/users' else '' }}">Usuarios</a>
+      <a href="/levels" class="{{ 'active' if request.url.path == '/levels' else '' }}">Niveles</a>
+      <a href="/logs" class="{{ 'active' if request.url.path == '/logs' else '' }}">Logs</a>
+    </nav>
     <form action="/logout" method="post">
       <button type="submit">Salir</button>
     </form>
@@ -21,4 +29,3 @@
   </main>
 </body>
 </html>
-

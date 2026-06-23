@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="section-heading">
+  <div>
+    <h1>Niveles</h1>
+    <p>Crea categorias de acceso para asignarlas a usuarios y skills.</p>
+  </div>
+</section>
+
+<section class="panel stack">
+  <form action="/levels" method="post" class="inline-form compact">
+    <input name="name" placeholder="Nombre" required>
+    <input name="slug" placeholder="slug" required>
+    <input name="rank" type="number" placeholder="rank" required>
+    <button type="submit">Crear</button>
+  </form>
+  <table>
+    <thead><tr><th>Nivel</th><th>Slug</th><th>Rank</th></tr></thead>
+    <tbody>
+    {% for level in levels %}
+    <tr><td>{{ level.name }}</td><td>{{ level.slug }}</td><td>{{ level.rank }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}
+

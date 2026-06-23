@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="section-heading">
+  <div>
+    <h1>Skills</h1>
+    <p>Activa comandos, cambia permisos y personaliza mensajes.</p>
+  </div>
+</section>
+
+<form action="/skills/save" method="post" class="panel stack">
+  {% for skill in skills %}
+  <section class="skill-card">
+    <div class="skill-card-header">
+      <div>
+        <h2>{{ skill.title }}</h2>
+        <p>{{ skill.description }}</p>
+      </div>
+      <label class="check"><input type="checkbox" name="enabled_{{ skill.key }}" {% if skill.enabled %}checked{% endif %}> Activa</label>
+    </div>
+    <div class="form-grid">
+      <label>Comando
+        <input name="command_{{ skill.key }}" value="{{ skill.command }}">
+      </label>
+      <label>Nivel minimo
+        <select name="level_{{ skill.key }}">
+          {% for level in levels %}
+          <option value="{{ level.id }}" {% if level.id == skill.required_level_id %}selected{% endif %}>{{ level.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+    {% set messages = skill_messages.get(skill.key, []) %}
+    {% if messages %}
+    <div class="message-grid">
+      {% for message in messages %}
+      <label>{{ message.label }}
+        <textarea name="message_{{ skill.key }}_{{ message.message_key }}" rows="{{ 7 if message.message_key.endswith('template') else 3 }}">{{ message.value or message.default_value }}</textarea>
+      </label>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </section>
+  {% endfor %}
+  <button type="submit">Guardar skills</button>
+</form>
+{% endblock %}

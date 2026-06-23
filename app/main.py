@@ -121,19 +121,64 @@ def logout():
 
 @app.get("/")
 def dashboard(request: Request, _: None = Depends(require_admin)):
-    settings = database.settings_map(include_secrets=False)
     return templates.TemplateResponse(
         "dashboard.html",
         {
             "request": request,
-            "settings": settings,
             "bot_running": bot_service.is_running,
-            "users": database.list_users(),
-            "skills": database.list_skills(),
-            "levels": database.list_levels(),
+            "settings": database.settings_map(include_secrets=False),
+            "user_count": len(database.list_users()),
+            "skill_count": len(database.list_skills()),
             "logs": database.recent_logs(20),
         },
     )
+
+
+@app.get("/settings")
+def settings_page(request: Request, _: None = Depends(require_admin)):
+    return templates.TemplateResponse(
+        "settings.html",
+        {
+            "request": request,
+            "settings": database.settings_map(include_secrets=False),
+            "bot_running": bot_service.is_running,
+        },
+    )
+
+
+@app.get("/skills")
+def skills_page(request: Request, _: None = Depends(require_admin)):
+    return templates.TemplateResponse(
+        "skills.html",
+        {
+            "request": request,
+            "skills": database.list_skills(),
+            "levels": database.list_levels(),
+            "skill_messages": database.list_skill_messages(),
+        },
+    )
+
+
+@app.get("/users")
+def users_page(request: Request, _: None = Depends(require_admin)):
+    return templates.TemplateResponse(
+        "users.html",
+        {
+            "request": request,
+            "users": database.list_users(),
+            "levels": database.list_levels(),
+        },
+    )
+
+
+@app.get("/levels")
+def levels_page(request: Request, _: None = Depends(require_admin)):
+    return templates.TemplateResponse("levels.html", {"request": request, "levels": database.list_levels()})
+
+
+@app.get("/logs")
+def logs_page(request: Request, _: None = Depends(require_admin)):
+    return templates.TemplateResponse("logs.html", {"request": request, "logs": database.recent_logs(100)})
 
 
 @app.post("/settings")
@@ -144,6 +189,7 @@ def save_settings(
     owner_telegram_id: str = Form(""),
     bdevices_search_url: str = Form(""),
     bdevices_agent_token: str = Form(""),
+    bdevices_ai_query_enabled: str | None = Form(None),
     ai_provider: str = Form("ollama"),
     ollama_base_url: str = Form(""),
     ollama_model: str = Form(""),
@@ -153,6 +199,7 @@ def save_settings(
     database.save_setting("bot_enabled", "1" if bot_enabled else "0")
     database.save_setting("owner_telegram_id", owner_telegram_id.strip())
     database.save_setting("bdevices_search_url", bdevices_search_url.strip())
+    database.save_setting("bdevices_ai_query_enabled", "1" if bdevices_ai_query_enabled else "0")
     database.save_setting("ai_provider", ai_provider.strip() or "ollama")
     database.save_setting("ollama_base_url", ollama_base_url.strip())
     database.save_setting("ollama_model", ollama_model.strip())
@@ -166,7 +213,7 @@ def save_settings(
             database.save_setting(key, value.strip(), is_secret=True)
     if owner_telegram_id.strip():
         database.upsert_user(owner_telegram_id.strip(), "Owner", is_owner=True)
-    return redirect("/")
+    return redirect("/settings")
 
 
 @app.post("/users")
@@ -182,14 +229,14 @@ def save_user(
         database.upsert_user(telegram_id.strip(), display_name, level_id, bool(is_owner), bool(is_blocked))
         if is_owner:
             database.save_setting("owner_telegram_id", telegram_id.strip())
-    return redirect("/")
+    return redirect("/users")
 
 
 @app.post("/levels")
 def create_level(_: None = Depends(require_admin), name: str = Form(""), slug: str = Form(""), rank: int = Form(...)):
     if name.strip() and slug.strip():
         database.create_level(name, slug, rank)
-    return redirect("/")
+    return redirect("/levels")
 
 
 @app.post("/skills/save")
@@ -198,9 +245,17 @@ async def save_skills(request: Request, _: None = Depends(require_admin)):
     for skill in database.list_skills():
         key = skill["key"]
         enabled = form.get(f"enabled_{key}") == "on"
+        command = _clean_command(str(form.get(f"command_{key}", skill["command"])))
         required_level_id = int(form.get(f"level_{key}", skill["required_level_id"]))
-        database.update_skill_permission(key, enabled, required_level_id)
-    return redirect("/")
+        database.update_skill_config(key, command, enabled, required_level_id)
+        for message in database.list_skill_messages().get(key, []):
+            database.update_skill_message(key, message["message_key"], str(form.get(f"message_{key}_{message['message_key']}", "")))
+    return redirect("/skills")
+
+
+def _clean_command(value: str) -> str:
+    cleaned = "".join(char for char in value.strip().lower().lstrip("/") if char.isalnum() or char == "_")
+    return (cleaned or "comando")[:32]
 
 
 @app.get("/health")

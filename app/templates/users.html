@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="section-heading">
+  <div>
+    <h1>Usuarios</h1>
+    <p>Gestiona IDs de Telegram, owner, bloqueos y niveles de acceso.</p>
+  </div>
+</section>
+
+<section class="panel stack">
+  <form action="/users" method="post" class="inline-form">
+    <input name="telegram_id" placeholder="Telegram ID" required>
+    <input name="display_name" placeholder="Nombre">
+    <select name="level_id">
+      {% for level in levels %}<option value="{{ level.id }}">{{ level.name }}</option>{% endfor %}
+    </select>
+    <label class="check"><input type="checkbox" name="is_owner"> Owner</label>
+    <label class="check"><input type="checkbox" name="is_blocked"> Bloqueado</label>
+    <button type="submit">Guardar</button>
+  </form>
+  <table>
+    <thead><tr><th>ID</th><th>Nombre</th><th>Nivel</th><th>Estado</th></tr></thead>
+    <tbody>
+    {% for user in users %}
+    <tr>
+      <td>{{ user.telegram_id }}</td>
+      <td>{{ user.display_name }}</td>
+      <td>{{ user.level_name }}</td>
+      <td>{% if user.is_owner %}Owner{% elif user.is_blocked %}Bloqueado{% else %}Activo{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}
+
