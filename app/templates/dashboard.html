@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <div>
+    <h1>AguacatIA</h1>
+    <p>Bot privado de Telegram con permisos por nivel y skills extensibles.</p>
+  </div>
+  <div class="status {{ 'ok' if bot_running else 'off' }}">
+    {{ "Bot activo" if bot_running else "Bot parado" }}
+  </div>
+</section>
+
+<section class="grid">
+  <form action="/settings" method="post" class="panel stack">
+    <h2>Configuracion</h2>
+    <label class="check"><input type="checkbox" name="bot_enabled" {% if settings.bot_enabled == "1" %}checked{% endif %}> Bot activo</label>
+    <label>Token Telegram
+      <input name="telegram_bot_token" type="password" placeholder="{{ settings.telegram_bot_token or 'Sin configurar' }}">
+    </label>
+    <label>Owner Telegram ID
+      <input name="owner_telegram_id" value="{{ settings.owner_telegram_id }}">
+    </label>
+    <label>URL busqueda BDevices
+      <input name="bdevices_search_url" value="{{ settings.bdevices_search_url }}">
+    </label>
+    <label>Token agente BDevices
+      <input name="bdevices_agent_token" type="password" placeholder="{{ settings.bdevices_agent_token or 'Sin configurar' }}">
+    </label>
+    <label>Proveedor IA
+      <select name="ai_provider">
+        <option value="ollama" {% if settings.ai_provider == "ollama" %}selected{% endif %}>Ollama</option>
+        <option value="openai" {% if settings.ai_provider == "openai" %}selected{% endif %}>OpenAI</option>
+        <option value="gemini" {% if settings.ai_provider == "gemini" %}selected{% endif %}>Gemini</option>
+      </select>
+    </label>
+    <label>Ollama URL
+      <input name="ollama_base_url" value="{{ settings.ollama_base_url }}">
+    </label>
+    <label>Ollama modelo
+      <input name="ollama_model" value="{{ settings.ollama_model }}">
+    </label>
+    <label>OpenAI API key
+      <input name="openai_api_key" type="password" placeholder="{{ settings.openai_api_key or 'Sin configurar' }}">
+    </label>
+    <label>Gemini API key
+      <input name="gemini_api_key" type="password" placeholder="{{ settings.gemini_api_key or 'Sin configurar' }}">
+    </label>
+    <button type="submit">Guardar configuracion</button>
+  </form>
+
+  <form action="/skills/save" method="post" class="panel stack">
+    <h2>Skills</h2>
+    <table>
+      <thead><tr><th>Activa</th><th>Comando</th><th>Nivel</th></tr></thead>
+      <tbody>
+      {% for skill in skills %}
+      <tr>
+        <td><input type="checkbox" name="enabled_{{ skill.key }}" {% if skill.enabled %}checked{% endif %}></td>
+        <td><strong>/{{ skill.command }}</strong><br><span>{{ skill.title }}</span></td>
+        <td>
+          <select name="level_{{ skill.key }}">
+            {% for level in levels %}
+            <option value="{{ level.id }}" {% if level.id == skill.required_level_id %}selected{% endif %}>{{ level.name }}</option>
+            {% endfor %}
+          </select>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <button type="submit">Guardar skills</button>
+  </form>
+</section>
+
+<section class="grid">
+  <div class="panel stack">
+    <h2>Usuarios</h2>
+    <form action="/users" method="post" class="inline-form">
+      <input name="telegram_id" placeholder="Telegram ID" required>
+      <input name="display_name" placeholder="Nombre">
+      <select name="level_id">
+        {% for level in levels %}<option value="{{ level.id }}">{{ level.name }}</option>{% endfor %}
+      </select>
+      <label class="check"><input type="checkbox" name="is_owner"> Owner</label>
+      <label class="check"><input type="checkbox" name="is_blocked"> Bloqueado</label>
+      <button type="submit">Guardar</button>
+    </form>
+    <table>
+      <thead><tr><th>ID</th><th>Nombre</th><th>Nivel</th><th>Estado</th></tr></thead>
+      <tbody>
+      {% for user in users %}
+      <tr>
+        <td>{{ user.telegram_id }}</td>
+        <td>{{ user.display_name }}</td>
+        <td>{{ user.level_name }}</td>
+        <td>{% if user.is_owner %}Owner{% elif user.is_blocked %}Bloqueado{% else %}Activo{% endif %}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel stack">
+    <h2>Niveles</h2>
+    <form action="/levels" method="post" class="inline-form">
+      <input name="name" placeholder="Nombre" required>
+      <input name="slug" placeholder="slug" required>
+      <input name="rank" type="number" placeholder="rank" required>
+      <button type="submit">Crear</button>
+    </form>
+    <table>
+      <thead><tr><th>Nivel</th><th>Slug</th><th>Rank</th></tr></thead>
+      <tbody>
+      {% for level in levels %}
+      <tr><td>{{ level.name }}</td><td>{{ level.slug }}</td><td>{{ level.rank }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Ultimos comandos</h2>
+  <table>
+    <thead><tr><th>Fecha</th><th>Usuario</th><th>Skill</th><th>Estado</th><th>Mensaje</th></tr></thead>
+    <tbody>
+    {% for log in logs %}
+    <tr><td>{{ log.created_at }}</td><td>{{ log.telegram_id }}</td><td>{{ log.skill_key }}</td><td>{{ log.status }}</td><td>{{ log.message }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}
+

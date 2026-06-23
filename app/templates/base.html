@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ app_name }}</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">{{ app_name }}</a>
+    <span class="version">v{{ app_version }}</span>
+    {% if request.url.path not in ["/login", "/setup"] %}
+    <form action="/logout" method="post">
+      <button type="submit">Salir</button>
+    </form>
+    {% endif %}
+  </header>
+  <main class="page">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
+

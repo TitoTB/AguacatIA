@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel narrow">
+  <h1>Crear acceso admin</h1>
+  <p>Esta contrasena protege el panel local de AguacatIA.</p>
+  {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+  <form method="post" class="stack">
+    <label>Contrasena
+      <input name="password" type="password" required minlength="8">
+    </label>
+    <label>Repetir contrasena
+      <input name="confirm_password" type="password" required minlength="8">
+    </label>
+    <button type="submit">Crear panel</button>
+  </form>
+</section>
+{% endblock %}
+

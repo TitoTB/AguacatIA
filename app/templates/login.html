@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel narrow">
+  <h1>Acceso admin</h1>
+  {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+  <form method="post" class="stack">
+    <label>Contrasena
+      <input name="password" type="password" required>
+    </label>
+    <button type="submit">Entrar</button>
+  </form>
+</section>
+{% endblock %}
+
