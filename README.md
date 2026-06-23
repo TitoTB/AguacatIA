@@ -58,6 +58,13 @@ Desde la shell del host Proxmox:
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/TitoTB/AguacatIA/main/scripts/proxmox_create_lxc.sh)"
 ```
 
+Si el repositorio esta privado, crea un token de GitHub con permiso de lectura del repo y ejecuta:
+
+```bash
+export GITHUB_TOKEN="TU_TOKEN"
+bash -c "$(curl -H "Authorization: Bearer ${GITHUB_TOKEN}" -fsSL https://raw.githubusercontent.com/TitoTB/AguacatIA/main/scripts/proxmox_create_lxc.sh)"
+```
+
 Opcionalmente puedes elegir parametros:
 
 ```bash
@@ -76,6 +83,13 @@ Cuando haya una nueva version publicada en GitHub, no recrees el contenedor:
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/TitoTB/AguacatIA/main/scripts/proxmox_update_lxc.sh)"
+```
+
+Con repositorio privado:
+
+```bash
+export GITHUB_TOKEN="TU_TOKEN"
+bash -c "$(curl -H "Authorization: Bearer ${GITHUB_TOKEN}" -fsSL https://raw.githubusercontent.com/TitoTB/AguacatIA/main/scripts/proxmox_update_lxc.sh)"
 ```
 
 Si necesitas indicar el ID manualmente:
@@ -99,4 +113,3 @@ journalctl -u aguacatia -f
 3. Implementa `async def handle(self, context)`.
 4. Registrala en `app/skills/__init__.py`.
 5. Reinicia el servicio. Aparecera en el panel para activar/desactivar y asignar nivel.
-

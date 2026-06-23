@@ -5,6 +5,7 @@ CTID="${CTID:-}"
 HOSTNAME="${HOSTNAME:-AguacatIA}"
 UPDATE_URL="https://raw.githubusercontent.com/TitoTB/AguacatIA/main/scripts/update_debian.sh"
 PORT="${PORT:-8020}"
+GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "Ejecuta este script como root en el host Proxmox."
@@ -28,10 +29,13 @@ if [ -z "$CTID" ]; then
 fi
 
 echo "Actualizando AguacatIA en CTID=$CTID..."
-pct exec "$CTID" -- bash -lc "apt update && apt install -y curl ca-certificates && bash -c \"\$(curl -fsSL $UPDATE_URL)\""
+if [ -n "$GITHUB_TOKEN" ]; then
+  pct exec "$CTID" -- bash -lc "apt update && apt install -y curl ca-certificates && export GITHUB_TOKEN='$GITHUB_TOKEN' && bash -c \"\$(curl -H 'Authorization: Bearer $GITHUB_TOKEN' -fsSL $UPDATE_URL)\""
+else
+  pct exec "$CTID" -- bash -lc "apt update && apt install -y curl ca-certificates && bash -c \"\$(curl -fsSL $UPDATE_URL)\""
+fi
 
 IP="$(pct exec "$CTID" -- bash -lc "hostname -I | awk '{print \$1}'" | tr -d '\r')"
 echo
 echo "AguacatIA actualizado."
 echo "URL: http://$IP:$PORT"
-

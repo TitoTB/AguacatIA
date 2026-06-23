@@ -15,6 +15,7 @@ CORES="${CORES:-1}"
 DISK="${DISK:-8}"
 PORT="${PORT:-8020}"
 PASSWORD="${PASSWORD:-}"
+GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "Ejecuta este script como root en el host Proxmox."
@@ -101,7 +102,11 @@ for _ in $(seq 1 60); do
 done
 
 echo "Instalando AguacatIA dentro del LXC..."
-pct exec "$CTID" -- bash -lc "apt update && apt install -y curl ca-certificates && PORT=$PORT bash -c \"\$(curl -fsSL $INSTALL_URL)\""
+if [ -n "$GITHUB_TOKEN" ]; then
+  pct exec "$CTID" -- bash -lc "apt update && apt install -y curl ca-certificates && export GITHUB_TOKEN='$GITHUB_TOKEN' && PORT=$PORT bash -c \"\$(curl -H 'Authorization: Bearer $GITHUB_TOKEN' -fsSL $INSTALL_URL)\""
+else
+  pct exec "$CTID" -- bash -lc "apt update && apt install -y curl ca-certificates && PORT=$PORT bash -c \"\$(curl -fsSL $INSTALL_URL)\""
+fi
 
 IP="$(pct exec "$CTID" -- bash -lc "hostname -I | awk '{print \$1}'" | tr -d '\r')"
 
@@ -116,4 +121,3 @@ echo "Comandos utiles:"
 echo "  pct enter $CTID"
 echo "  pct exec $CTID -- systemctl status aguacatia"
 echo "  pct exec $CTID -- journalctl -u aguacatia -f"
-

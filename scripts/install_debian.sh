@@ -5,6 +5,15 @@ APP_DIR="/opt/AguacatIA"
 REPO_URL="https://github.com/TitoTB/AguacatIA.git"
 SERVICE_FILE="/etc/systemd/system/aguacatia.service"
 PORT="${PORT:-8020}"
+GITHUB_TOKEN="${GITHUB_TOKEN:-}"
+
+git_auth() {
+  if [ -n "$GITHUB_TOKEN" ]; then
+    git -c http.extraHeader="Authorization: Bearer $GITHUB_TOKEN" "$@"
+  else
+    git "$@"
+  fi
+}
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "Ejecuta este instalador como root."
@@ -15,10 +24,10 @@ apt update
 apt install -y git python3 python3-venv
 
 if [ -d "$APP_DIR/.git" ]; then
-  git -C "$APP_DIR" pull
+  git_auth -C "$APP_DIR" pull
 else
   rm -rf "$APP_DIR"
-  git clone "$REPO_URL" "$APP_DIR"
+  git_auth clone "$REPO_URL" "$APP_DIR"
 fi
 
 python3 -m venv "$APP_DIR/.venv"
@@ -52,4 +61,3 @@ echo
 echo "AguacatIA instalado."
 echo "Abre: http://IP_DEL_SERVIDOR:$PORT"
 echo "Logs: journalctl -u aguacatia -f"
-
