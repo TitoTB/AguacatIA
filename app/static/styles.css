@@ -151,6 +151,25 @@ button {
   cursor: pointer;
 }
 button:hover { background: var(--accent-strong); }
+.secondary-button {
+  background: #e7f0e6;
+  color: var(--ink);
+}
+.secondary-button:hover { background: #d9e8d8; }
+
+.info-box {
+  background: #f8faf7;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px;
+}
+.info-box span {
+  color: var(--muted);
+  font-size: 13px;
+}
 
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { border-bottom: 1px solid var(--line); padding: 10px 8px; text-align: left; vertical-align: top; }
@@ -173,6 +192,49 @@ td span { color: var(--muted); font-size: 12px; }
   gap: 12px;
 }
 .message-grid { grid-template-columns: 1fr; }
+.skill-list {
+  display: grid;
+  gap: 12px;
+}
+.skill-block {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 18px;
+  text-decoration: none;
+}
+.skill-block:hover { border-color: var(--accent); }
+.skill-block h2 { margin: 0 0 4px; }
+.skill-block p { color: var(--muted); margin: 0; }
+.skill-meta {
+  align-items: flex-end;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.status-pill {
+  border-radius: 999px;
+  display: inline-flex;
+  font-weight: 800;
+  padding: 5px 9px;
+}
+.status-pill.ok { background: #e7f7ed; color: #136c3c; }
+.status-pill.off { background: #fff0eb; color: #7a271a; }
+.back-link {
+  color: var(--accent);
+  display: inline-flex;
+  font-weight: 800;
+  margin-bottom: 8px;
+  text-decoration: none;
+}
 .skill-card {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -215,6 +277,8 @@ td span { color: var(--muted); font-size: 12px; }
   .inline-form.compact { grid-template-columns: 1fr; }
   .form-grid { grid-template-columns: 1fr; }
   .skill-card-header { flex-direction: column; }
+  .skill-block { align-items: flex-start; flex-direction: column; }
+  .skill-meta { align-items: flex-start; }
   .page { width: min(100% - 20px, 1280px); }
   .topbar { align-items: flex-start; height: auto; flex-wrap: wrap; padding: 14px; }
   .nav { margin-left: 0; width: 100%; }

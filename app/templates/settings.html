@@ -24,10 +24,26 @@
   <label>URL busqueda BDevices
     <input name="bdevices_search_url" value="{{ settings.bdevices_search_url }}">
   </label>
+  <label>URL taxonomias BDevices
+    <input name="bdevices_taxonomies_url" value="{{ settings.bdevices_taxonomies_url }}">
+  </label>
   <label>Token agente BDevices
     <input name="bdevices_agent_token" type="password" placeholder="{{ settings.bdevices_agent_token or 'Sin configurar' }}">
   </label>
   <label class="check"><input type="checkbox" name="bdevices_ai_query_enabled" {% if settings.bdevices_ai_query_enabled == "1" %}checked{% endif %}> Usar IA para interpretar consultas BDevices</label>
+  <div class="info-box">
+    <strong>Taxonomias</strong>
+    <span>{{ settings.bdevices_taxonomies_last_status }}</span>
+    <span>Ultima sincronizacion: {{ settings.bdevices_taxonomies_last_sync or "Nunca" }}</span>
+    <span>
+      {% for key, count in bdevices_taxonomies_summary.items() %}
+      {{ key }}: {{ count }}{% if not loop.last %} · {% endif %}
+      {% else %}
+      Sin valores sincronizados
+      {% endfor %}
+    </span>
+  </div>
+  <button type="submit" form="sync-taxonomies" class="secondary-button">Sincronizar taxonomias ahora</button>
 
   <h2>IA</h2>
   <label>Proveedor IA
@@ -51,4 +67,5 @@
   </label>
   <button type="submit">Guardar configuracion</button>
 </form>
+<form id="sync-taxonomies" action="/settings/bdevices-taxonomies/sync" method="post"></form>
 {% endblock %}

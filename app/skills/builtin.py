@@ -43,3 +43,33 @@ class StatusSkill:
         level = user["level_name"] if user else "Publico"
         template = database.get_skill_message(self.definition.key, "status", "AguacatIA activo.\nTu nivel: {level}")
         await context.message.answer(template.format(level=level))
+
+
+class BotSystemSkill:
+    definition = SkillDefinition(
+        key="bot_system",
+        title="Sistema del bot",
+        description="Mensajes generales de Telegram que no pertenecen a una skill concreta.",
+        command="",
+        messages={
+            "start": {
+                "label": "Mensaje /start",
+                "default": "Hola, soy AguacatIA. Usa /ayuda para ver los comandos disponibles.",
+            },
+            "fallback": {
+                "label": "Mensaje sin comando",
+                "default": "Trabajamos por comandos. Usa /ayuda.",
+            },
+            "unknown_command": {
+                "label": "Comando desconocido",
+                "default": "No conozco ese comando. Usa /ayuda.",
+            },
+            "skill_error": {
+                "label": "Error ejecutando skill",
+                "default": "Ha ocurrido un error ejecutando el comando.",
+            },
+        },
+    )
+
+    async def handle(self, context: SkillContext) -> None:
+        await context.message.answer(database.get_skill_message(self.definition.key, "fallback", "Trabajamos por comandos. Usa /ayuda."))

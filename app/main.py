@@ -6,6 +6,7 @@ from fastapi.responses import PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from app import bdevices_taxonomies
 from app import database
 from app.bot import TelegramBotService
 from app.config import APP_NAME, APP_VERSION
@@ -22,9 +23,11 @@ async def lifespan(app: FastAPI):
     database.init_db()
     bot_service.sync_skills()
     app.state.bot_supervisor = asyncio.create_task(bot_service.supervise())
+    app.state.bdevices_taxonomies_syncer = asyncio.create_task(bdevices_taxonomies.periodic_sync())
     yield
     await bot_service.stop()
     app.state.bot_supervisor.cancel()
+    app.state.bdevices_taxonomies_syncer.cancel()
 
 
 app = FastAPI(title=APP_NAME, version=APP_VERSION, lifespan=lifespan)
@@ -142,6 +145,7 @@ def settings_page(request: Request, _: None = Depends(require_admin)):
             "request": request,
             "settings": database.settings_map(include_secrets=False),
             "bot_running": bot_service.is_running,
+            "bdevices_taxonomies_summary": database.bdevices_taxonomies_summary(),
         },
     )
 
@@ -153,8 +157,23 @@ def skills_page(request: Request, _: None = Depends(require_admin)):
         {
             "request": request,
             "skills": database.list_skills(),
+        },
+    )
+
+
+@app.get("/skills/{skill_key}")
+def skill_detail_page(skill_key: str, request: Request, _: None = Depends(require_admin)):
+    skill = database.get_skill(skill_key)
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill no encontrada")
+    return templates.TemplateResponse(
+        "skill_detail.html",
+        {
+            "request": request,
+            "skill": skill,
             "levels": database.list_levels(),
-            "skill_messages": database.list_skill_messages(),
+            "messages": database.list_skill_messages().get(skill_key, []),
+            "triggers_text": database.skill_triggers_text(skill_key),
         },
     )
 
@@ -188,6 +207,7 @@ def save_settings(
     telegram_bot_token: str = Form(""),
     owner_telegram_id: str = Form(""),
     bdevices_search_url: str = Form(""),
+    bdevices_taxonomies_url: str = Form(""),
     bdevices_agent_token: str = Form(""),
     bdevices_ai_query_enabled: str | None = Form(None),
     ai_provider: str = Form("ollama"),
@@ -199,6 +219,7 @@ def save_settings(
     database.save_setting("bot_enabled", "1" if bot_enabled else "0")
     database.save_setting("owner_telegram_id", owner_telegram_id.strip())
     database.save_setting("bdevices_search_url", bdevices_search_url.strip())
+    database.save_setting("bdevices_taxonomies_url", bdevices_taxonomies_url.strip())
     database.save_setting("bdevices_ai_query_enabled", "1" if bdevices_ai_query_enabled else "0")
     database.save_setting("ai_provider", ai_provider.strip() or "ollama")
     database.save_setting("ollama_base_url", ollama_base_url.strip())
@@ -213,6 +234,12 @@ def save_settings(
             database.save_setting(key, value.strip(), is_secret=True)
     if owner_telegram_id.strip():
         database.upsert_user(owner_telegram_id.strip(), "Owner", is_owner=True)
+    return redirect("/settings")
+
+
+@app.post("/settings/bdevices-taxonomies/sync")
+async def sync_bdevices_taxonomies_now(_: None = Depends(require_admin)):
+    await bdevices_taxonomies.sync_once()
     return redirect("/settings")
 
 
@@ -245,12 +272,28 @@ async def save_skills(request: Request, _: None = Depends(require_admin)):
     for skill in database.list_skills():
         key = skill["key"]
         enabled = form.get(f"enabled_{key}") == "on"
-        command = _clean_command(str(form.get(f"command_{key}", skill["command"])))
+        command = _clean_command(str(form.get(f"command_{key}", skill["command"]))) if skill["command"] else ""
         required_level_id = int(form.get(f"level_{key}", skill["required_level_id"]))
         database.update_skill_config(key, command, enabled, required_level_id)
         for message in database.list_skill_messages().get(key, []):
             database.update_skill_message(key, message["message_key"], str(form.get(f"message_{key}_{message['message_key']}", "")))
     return redirect("/skills")
+
+
+@app.post("/skills/{skill_key}/save")
+async def save_skill_detail(skill_key: str, request: Request, _: None = Depends(require_admin)):
+    skill = database.get_skill(skill_key)
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill no encontrada")
+    form = await request.form()
+    enabled = form.get("enabled") == "on"
+    command = _clean_command(str(form.get("command", skill["command"]))) if skill["command"] else ""
+    required_level_id = int(form.get("required_level_id", skill["required_level_id"]))
+    database.update_skill_config(skill_key, command, enabled, required_level_id)
+    database.replace_skill_triggers(skill_key, str(form.get("triggers", "")))
+    for message in database.list_skill_messages().get(skill_key, []):
+        database.update_skill_message(skill_key, message["message_key"], str(form.get(f"message_{message['message_key']}", "")))
+    return redirect(f"/skills/{skill_key}")
 
 
 def _clean_command(value: str) -> str:

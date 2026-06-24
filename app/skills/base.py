@@ -11,6 +11,7 @@ class SkillDefinition:
     description: str
     command: str
     messages: dict[str, dict[str, str]] = field(default_factory=dict)
+    triggers: list[str] = field(default_factory=list)
 
 
 @dataclass

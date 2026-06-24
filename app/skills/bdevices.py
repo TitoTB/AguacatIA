@@ -16,6 +16,16 @@ class BDevicesSearchSkill:
         title="Buscar dispositivo BDevices",
         description="Consulta la API de BDevices para recomendar dispositivos de domotica.",
         command="dispositivo",
+        triggers=[
+            "busca un dispositivo",
+            "buscar dispositivo",
+            "recomiendame un dispositivo",
+            "recomienda un dispositivo",
+            "quiero un dispositivo",
+            "busco un dispositivo",
+            "busco un sensor",
+            "recomiendame un sensor",
+        ],
         messages={
             "empty_query": {
                 "label": "Mensaje sin consulta",
@@ -51,7 +61,7 @@ class BDevicesSearchSkill:
             },
             "ai_query_prompt": {
                 "label": "Prompt IA para interpretar consulta",
-                "default": "Convierte la consulta del usuario en filtros JSON para buscar dispositivos de domotica. Devuelve solo JSON valido con estas claves opcionales: query, brand, category, protocol, integration_type, marketplace, max_price, min_rating, local_function, battery, sort. Valores utiles: protocol puede ser Zigbee, WiFi, Matter, Thread, Bluetooth, Z-Wave, 433 o IR; marketplace puede ser official, amazon o aliexpress; local_function y battery deben ser Si o No; sort debe ser relevance, price_asc, price_desc o rating_desc. No inventes valores. Consulta: {query}",
+                "default": "Convierte la consulta del usuario en filtros JSON para buscar dispositivos de domotica. Devuelve solo JSON valido con estas claves opcionales: query, brand, category, protocol, integration_type, marketplace, max_price, min_rating, local_function, battery, sort. Usa solo valores presentes en estas taxonomias cuando existan:\n{taxonomies}\nValores especiales: local_function y battery deben ser Si o No; sort debe ser relevance, price_asc, price_desc o rating_desc. No inventes valores. Consulta: {query}",
             },
         },
     )
@@ -113,26 +123,47 @@ async def _build_search_payload(query: str, settings: dict[str, str]) -> dict:
 def _local_query_payload(query: str) -> dict:
     normalized = _normalize(query)
     payload: dict[str, object] = {"query": query, "sort": "relevance"}
+    taxonomies = database.bdevices_taxonomies_normalized_map()
 
-    for brand in _BRANDS:
-        if _contains_term(normalized, brand):
-            payload["brand"] = brand
-            break
+    brand = _match_taxonomy(normalized, taxonomies.get("brand", {}))
+    if brand:
+        payload["brand"] = brand
+    else:
+        for brand in _BRANDS:
+            if _contains_term(normalized, brand):
+                payload["brand"] = brand
+                break
 
-    for protocol, terms in _PROTOCOL_TERMS.items():
-        if any(_contains_term(normalized, term) for term in terms):
-            payload["protocol"] = protocol
-            break
+    protocol = _match_taxonomy(normalized, taxonomies.get("protocol", {}))
+    if protocol:
+        payload["protocol"] = protocol
+    else:
+        for protocol, terms in _PROTOCOL_TERMS.items():
+            if any(_contains_term(normalized, term) for term in terms):
+                payload["protocol"] = protocol
+                break
+
+    category = _match_taxonomy(normalized, taxonomies.get("category", {}))
+    if category:
+        payload["category"] = category
+
+    integration_type = _match_taxonomy(normalized, taxonomies.get("integration_type", {}))
+    if integration_type:
+        payload["integration_type"] = integration_type
 
     if any(term in normalized for term in ["local", "localmente", "sin nube", "sin cloud"]):
         payload["local_function"] = "Si"
     elif any(term in normalized for term in ["nube", "cloud"]):
         payload["local_function"] = "No"
 
-    for marketplace, terms in _MARKETPLACE_TERMS.items():
-        if any(_contains_term(normalized, term) for term in terms):
-            payload["marketplace"] = marketplace
-            break
+    marketplace = _match_taxonomy(normalized, taxonomies.get("marketplace", {}))
+    if marketplace:
+        payload["marketplace"] = marketplace
+    else:
+        for marketplace, terms in _MARKETPLACE_TERMS.items():
+            if any(_contains_term(normalized, term) for term in terms):
+                payload["marketplace"] = marketplace
+                break
 
     if any(term in normalized for term in ["enchufado", "corriente", "sin bateria", "sin pilas"]):
         payload["battery"] = "No"
@@ -171,7 +202,10 @@ def _should_use_ai_query_parser(settings: dict[str, str], payload: dict) -> bool
 async def _ollama_query_payload(query: str, settings: dict[str, str]) -> dict:
     base_url = settings.get("ollama_base_url", "").rstrip("/")
     model = settings.get("ollama_model", "").strip() or "llama3.1"
-    prompt = _render_template(_message(BDevicesSearchSkill.definition.key, "ai_query_prompt"), {"query": query})
+    prompt = _render_template(
+        _message(BDevicesSearchSkill.definition.key, "ai_query_prompt"),
+        {"query": query, "taxonomies": _taxonomy_prompt_context()},
+    )
     try:
         async with httpx.AsyncClient(timeout=18) as client:
             response = await client.post(
@@ -295,7 +329,7 @@ def _device_values(item: dict) -> dict[str, str]:
         "local_function": _escape(item.get("local_function") or ""),
         "battery": _escape(item.get("battery") or ""),
         "difficulty": _escape(item.get("difficulty") or ""),
-        "rating": _escape(item.get("rating") or ""),
+        "rating": _escape(_format_rating(item.get("rating"))),
         "price": _escape(price),
         "best_platform": _escape(item.get("best_platform") or (best.get("label") if best else "") or ""),
         "best_url": str(best_url),
@@ -344,6 +378,15 @@ def _format_price(value: object, currency: str) -> str:
         return f"{value} {currency}"
 
 
+def _format_rating(value: object) -> str:
+    if value is None or value == "":
+        return ""
+    try:
+        return str(round(float(value)))
+    except (TypeError, ValueError):
+        return str(value)
+
+
 def _best_option(options: list[dict]) -> dict:
     priced = [option for option in options if option.get("price") is not None]
     if not priced:
@@ -366,6 +409,29 @@ def _normalize(value: str) -> str:
 
 def _contains_term(text: str, term: str) -> bool:
     return re.search(rf"(^|\W){re.escape(term)}($|\W)", text) is not None
+
+
+def _match_taxonomy(text: str, values_by_normalized: dict[str, str]) -> str:
+    matches = [
+        (normalized, value)
+        for normalized, value in values_by_normalized.items()
+        if normalized and _contains_term(text, normalized)
+    ]
+    if not matches:
+        return ""
+    return max(matches, key=lambda item: len(item[0]))[1]
+
+
+def _taxonomy_prompt_context() -> str:
+    taxonomies = database.bdevices_taxonomies_map()
+    if not taxonomies:
+        return "No hay taxonomias sincronizadas."
+    lines = []
+    for key in ["brand", "category", "protocol", "integration_type", "marketplace", "battery", "local_function"]:
+        values = taxonomies.get(key, [])[:60]
+        if values:
+            lines.append(f"{key}: {', '.join(values)}")
+    return "\n".join(lines) or "No hay taxonomias sincronizadas."
 
 
 def _extract_max_price(text: str) -> float | None:

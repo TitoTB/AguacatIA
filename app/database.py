@@ -83,6 +83,23 @@ def init_db() -> None:
                 PRIMARY KEY(skill_key, message_key),
                 FOREIGN KEY(skill_key) REFERENCES skills(key) ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS skill_triggers (
+                skill_key TEXT NOT NULL,
+                trigger TEXT NOT NULL,
+                normalized TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(skill_key, normalized),
+                FOREIGN KEY(skill_key) REFERENCES skills(key) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS bdevices_taxonomies (
+                kind TEXT NOT NULL,
+                value TEXT NOT NULL,
+                normalized TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(kind, value)
+            );
             """
         )
         _seed_levels(conn)
@@ -110,8 +127,11 @@ def _seed_settings(conn: sqlite3.Connection) -> None:
         "bot_enabled": "0",
         "owner_telegram_id": "",
         "bdevices_search_url": "http://bdevices:8010/api/agent/devices/search",
+        "bdevices_taxonomies_url": "http://bdevices:8010/api/agent/devices/taxonomies",
         "bdevices_agent_token": "",
         "bdevices_ai_query_enabled": "0",
+        "bdevices_taxonomies_last_sync": "",
+        "bdevices_taxonomies_last_status": "Sin sincronizar",
         "ai_provider": "ollama",
         "ollama_base_url": "http://ollama:11434",
         "ollama_model": "llama3.1",
@@ -237,6 +257,21 @@ def sync_skills(definitions: Iterable[dict[str, Any]]) -> None:
                         now,
                     ),
                 )
+            existing_triggers = conn.execute(
+                "SELECT 1 FROM skill_triggers WHERE skill_key = ? LIMIT 1",
+                (skill["key"],),
+            ).fetchone()
+            if not existing_triggers:
+                for trigger in skill.get("triggers") or []:
+                    normalized = normalize_text(trigger)
+                    if normalized:
+                        conn.execute(
+                            """
+                            INSERT OR IGNORE INTO skill_triggers(skill_key, trigger, normalized, updated_at)
+                            VALUES (?, ?, ?, ?)
+                            """,
+                            (skill["key"], trigger.strip(), normalized, now),
+                        )
 
 
 def list_skills() -> list[sqlite3.Row]:
@@ -249,6 +284,65 @@ def list_skills() -> list[sqlite3.Row]:
             ORDER BY s.key
             """
         ).fetchall()
+
+
+def list_skill_triggers() -> dict[str, list[sqlite3.Row]]:
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM skill_triggers ORDER BY skill_key, trigger"
+        ).fetchall()
+    grouped: dict[str, list[sqlite3.Row]] = {}
+    for row in rows:
+        grouped.setdefault(row["skill_key"], []).append(row)
+    return grouped
+
+
+def skill_triggers_text(skill_key: str) -> str:
+    rows = list_skill_triggers().get(skill_key, [])
+    return "\n".join(row["trigger"] for row in rows)
+
+
+def replace_skill_triggers(skill_key: str, triggers_text: str) -> None:
+    now = utc_now()
+    rows = []
+    seen = set()
+    for line in str(triggers_text or "").splitlines():
+        trigger = line.strip()
+        normalized = normalize_text(trigger)
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        rows.append((skill_key, trigger, normalized, now))
+    with connect() as conn:
+        conn.execute("DELETE FROM skill_triggers WHERE skill_key = ?", (skill_key,))
+        conn.executemany(
+            """
+            INSERT INTO skill_triggers(skill_key, trigger, normalized, updated_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            rows,
+        )
+
+
+def find_skill_trigger(text: str) -> sqlite3.Row | None:
+    normalized_text = normalize_text(text)
+    if not normalized_text:
+        return None
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT t.*, s.enabled, s.command
+            FROM skill_triggers t
+            JOIN skills s ON s.key = t.skill_key
+            WHERE s.enabled = 1
+            ORDER BY length(t.normalized) DESC
+            """
+        ).fetchall()
+    for row in rows:
+        trigger = row["normalized"]
+        if normalized_text == trigger or normalized_text.startswith(f"{trigger} "):
+            return row
+    return None
 
 
 def get_skill(key: str) -> sqlite3.Row | None:
@@ -400,3 +494,67 @@ def log_command(telegram_id: str, skill_key: str, command: str, status: str, mes
 def recent_logs(limit: int = 50) -> list[sqlite3.Row]:
     with connect() as conn:
         return conn.execute("SELECT * FROM command_log ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+
+
+def replace_bdevices_taxonomies(taxonomies: dict[str, list[str]]) -> int:
+    now = utc_now()
+    rows = [
+        (kind, value.strip(), _normalize_taxonomy(value), now)
+        for kind, values in taxonomies.items()
+        for value in values
+        if str(value).strip()
+    ]
+    with connect() as conn:
+        conn.execute("DELETE FROM bdevices_taxonomies")
+        conn.executemany(
+            """
+            INSERT OR REPLACE INTO bdevices_taxonomies(kind, value, normalized, updated_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            rows,
+        )
+    return len(rows)
+
+
+def bdevices_taxonomies_map() -> dict[str, list[str]]:
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT kind, value FROM bdevices_taxonomies ORDER BY kind, value"
+        ).fetchall()
+    taxonomies: dict[str, list[str]] = {}
+    for row in rows:
+        taxonomies.setdefault(row["kind"], []).append(row["value"])
+    return taxonomies
+
+
+def bdevices_taxonomies_normalized_map() -> dict[str, dict[str, str]]:
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT kind, value, normalized FROM bdevices_taxonomies ORDER BY kind, value"
+        ).fetchall()
+    taxonomies: dict[str, dict[str, str]] = {}
+    for row in rows:
+        taxonomies.setdefault(row["kind"], {})[row["normalized"]] = row["value"]
+    return taxonomies
+
+
+def bdevices_taxonomies_summary() -> dict[str, int]:
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT kind, COUNT(*) AS count FROM bdevices_taxonomies GROUP BY kind ORDER BY kind"
+        ).fetchall()
+    return {row["kind"]: int(row["count"]) for row in rows}
+
+
+def _normalize_taxonomy(value: object) -> str:
+    return normalize_text(value)
+
+
+def normalize_text(value: object) -> str:
+    import re
+    import unicodedata
+
+    decomposed = unicodedata.normalize("NFKD", str(value or "").lower())
+    plain = "".join(char for char in decomposed if not unicodedata.combining(char))
+    plain = re.sub(r"[^\w\s-]", " ", plain)
+    return re.sub(r"\s+", " ", plain).strip()
