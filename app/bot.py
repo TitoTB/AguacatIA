@@ -9,6 +9,7 @@ from app import database
 from app.permissions import can_use_skill
 from app.skills import build_registry
 from app.skills.base import SkillContext
+from app.telegram_html import answer_html
 
 
 logger = logging.getLogger(__name__)
@@ -80,7 +81,7 @@ class TelegramBotService:
         async def start(message: Message) -> None:
             display_name = _display_name(message)
             database.ensure_user(str(message.from_user.id), display_name)
-            await message.answer(_bot_message("start", "Hola, soy AguacatIA. Usa /ayuda para ver los comandos disponibles."))
+            await answer_html(message, _bot_message("start", "Hola, soy AguacatIA. Usa /ayuda para ver los comandos disponibles."))
 
         @dispatcher.message(F.text.startswith("/"))
         async def command(message: Message) -> None:
@@ -93,7 +94,7 @@ class TelegramBotService:
             skill_row = database.get_skill_by_command(command_name)
             skill = self.registry.get(skill_row["key"]) if skill_row else self.registry.get_by_command(command_name)
             if not skill:
-                await message.answer(_bot_message("unknown_command", "No conozco ese comando. Usa /ayuda."))
+                await answer_html(message, _bot_message("unknown_command", "No conozco ese comando. Usa /ayuda."))
                 return
             await self._run_skill(message, telegram_id, skill, args, command_name)
 
@@ -109,13 +110,13 @@ class TelegramBotService:
                     args = _trigger_args(text, trigger["trigger"])
                     await self._run_skill(message, telegram_id, skill, args, f"trigger:{trigger['trigger']}")
                     return
-            await message.answer(_bot_message("fallback", "Trabajamos por comandos. Usa /ayuda."))
+            await answer_html(message, _bot_message("fallback", "Trabajamos por comandos. Usa /ayuda."))
 
     async def _run_skill(self, message: Message, telegram_id: str, skill, args: str, command_name: str) -> None:
         allowed, reason = can_use_skill(telegram_id, skill.definition.key)
         if not allowed:
             database.log_command(telegram_id, skill.definition.key, command_name, "denied", reason)
-            await message.answer(reason)
+            await answer_html(message, reason)
             return
         try:
             await skill.handle(SkillContext(message=message, args=args))
@@ -123,7 +124,7 @@ class TelegramBotService:
         except Exception as exc:
             logger.exception("Skill failed: %s", skill.definition.key)
             database.log_command(telegram_id, skill.definition.key, command_name, "error", str(exc))
-            await message.answer(_bot_message("skill_error", "Ha ocurrido un error ejecutando el comando."))
+            await answer_html(message, _bot_message("skill_error", "Ha ocurrido un error ejecutando el comando."))
 
 
 def _display_name(message: Message) -> str:

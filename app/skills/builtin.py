@@ -1,5 +1,8 @@
+import html
+
 from app import database
 from app.skills.base import SkillContext, SkillDefinition
+from app.telegram_html import answer_html
 
 
 class HelpSkill:
@@ -8,6 +11,7 @@ class HelpSkill:
         title="Ayuda",
         description="Muestra los comandos disponibles.",
         command="ayuda",
+        variables={},
         messages={
             "header": {
                 "label": "Cabecera de ayuda",
@@ -20,8 +24,8 @@ class HelpSkill:
         skills = [row for row in database.list_skills() if row["enabled"]]
         lines = [database.get_skill_message(self.definition.key, "header", "Comandos disponibles:")]
         for skill in skills:
-            lines.append(f"/{skill['command']} - {skill['title']}")
-        await context.message.answer("\n".join(lines))
+            lines.append(f"/{html.escape(str(skill['command']))} - {html.escape(str(skill['title']))}")
+        await answer_html(context.message, "\n".join(lines))
 
 
 class StatusSkill:
@@ -30,6 +34,9 @@ class StatusSkill:
         title="Estado",
         description="Muestra el estado basico del bot.",
         command="estado",
+        variables={
+            "level": "Nivel del usuario",
+        },
         messages={
             "status": {
                 "label": "Mensaje de estado",
@@ -40,9 +47,9 @@ class StatusSkill:
 
     async def handle(self, context: SkillContext) -> None:
         user = database.get_user_with_level(str(context.message.from_user.id))
-        level = user["level_name"] if user else "Publico"
+        level = html.escape(str(user["level_name"] if user else "Publico"))
         template = database.get_skill_message(self.definition.key, "status", "AguacatIA activo.\nTu nivel: {level}")
-        await context.message.answer(template.format(level=level))
+        await answer_html(context.message, template.format(level=level))
 
 
 class BotSystemSkill:
@@ -51,6 +58,7 @@ class BotSystemSkill:
         title="Sistema del bot",
         description="Mensajes generales de Telegram que no pertenecen a una skill concreta.",
         command="",
+        variables={},
         messages={
             "start": {
                 "label": "Mensaje /start",
@@ -72,4 +80,4 @@ class BotSystemSkill:
     )
 
     async def handle(self, context: SkillContext) -> None:
-        await context.message.answer(database.get_skill_message(self.definition.key, "fallback", "Trabajamos por comandos. Usa /ayuda."))
+        await answer_html(context.message, database.get_skill_message(self.definition.key, "fallback", "Trabajamos por comandos. Usa /ayuda."))

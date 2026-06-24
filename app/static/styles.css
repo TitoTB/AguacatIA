@@ -171,6 +171,34 @@ button:hover { background: var(--accent-strong); }
   font-size: 13px;
 }
 
+.variable-helper {
+  background: #f8faf7;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+}
+.variable-helper h2 { margin: 0; }
+.variable-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.variable-token {
+  background: #fff;
+  border: 1px solid var(--line);
+  color: var(--accent-strong);
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  padding: 7px 9px;
+}
+.variable-token:hover {
+  background: #e7f0e6;
+  border-color: var(--accent);
+}
+
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { border-bottom: 1px solid var(--line); padding: 10px 8px; text-align: left; vertical-align: top; }
 th { color: var(--muted); font-size: 12px; text-transform: uppercase; }

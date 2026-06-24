@@ -31,6 +31,17 @@
     <textarea name="triggers" rows="7" placeholder="Una frase por linea">{{ triggers_text }}</textarea>
   </label>
 
+  {% if variables %}
+  <section class="variable-helper">
+    <h2>Variables disponibles</h2>
+    <div class="variable-list">
+      {% for name, description in variables.items() %}
+      <button type="button" class="variable-token" data-variable="{{ '{' ~ name ~ '}' }}" title="{{ description }}">{{ "{" ~ name ~ "}" }}</button>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
   {% if messages %}
   <section class="message-grid">
     <h2>Mensajes</h2>
@@ -44,4 +55,27 @@
 
   <button type="submit">Guardar skill</button>
 </form>
+
+<script>
+  (() => {
+    let lastField = null;
+    document.querySelectorAll("textarea, input[type='text'], input:not([type])").forEach((field) => {
+      field.addEventListener("focus", () => { lastField = field; });
+      field.addEventListener("click", () => { lastField = field; });
+    });
+    document.querySelectorAll("[data-variable]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const field = lastField || document.querySelector("textarea");
+        if (!field) return;
+        const value = button.dataset.variable || "";
+        const start = field.selectionStart ?? field.value.length;
+        const end = field.selectionEnd ?? field.value.length;
+        field.value = `${field.value.slice(0, start)}${value}${field.value.slice(end)}`;
+        const cursor = start + value.length;
+        field.focus();
+        field.setSelectionRange(cursor, cursor);
+      });
+    });
+  })();
+</script>
 {% endblock %}

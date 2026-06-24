@@ -1,3 +1,5 @@
+import html
+
 from app import database
 
 
@@ -18,6 +20,5 @@ def can_use_skill(telegram_id: str, skill_key: str) -> tuple[bool, str]:
     if user["is_owner"]:
         return True, ""
     if int(user["level_rank"]) < int(skill["required_level_rank"]):
-        return False, f"Esta skill requiere el nivel {skill['required_level_name']}."
+        return False, f"Esta skill requiere el nivel {html.escape(str(skill['required_level_name']))}."
     return True, ""
-

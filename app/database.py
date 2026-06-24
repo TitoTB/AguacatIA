@@ -128,6 +128,7 @@ def _seed_settings(conn: sqlite3.Connection) -> None:
         "owner_telegram_id": "",
         "bdevices_search_url": "http://bdevices:8010/api/agent/devices/search",
         "bdevices_taxonomies_url": "http://bdevices:8010/api/agent/devices/taxonomies",
+        "bdevices_device_url_template": "https://aguacatec.es/?p={wordpress_id}",
         "bdevices_agent_token": "",
         "bdevices_ai_query_enabled": "0",
         "bdevices_taxonomies_last_sync": "",

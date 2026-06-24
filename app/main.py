@@ -174,6 +174,7 @@ def skill_detail_page(skill_key: str, request: Request, _: None = Depends(requir
             "levels": database.list_levels(),
             "messages": database.list_skill_messages().get(skill_key, []),
             "triggers_text": database.skill_triggers_text(skill_key),
+            "variables": bot_service.registry.get(skill_key).definition.variables if bot_service.registry.get(skill_key) else {},
         },
     )
 
@@ -208,6 +209,7 @@ def save_settings(
     owner_telegram_id: str = Form(""),
     bdevices_search_url: str = Form(""),
     bdevices_taxonomies_url: str = Form(""),
+    bdevices_device_url_template: str = Form(""),
     bdevices_agent_token: str = Form(""),
     bdevices_ai_query_enabled: str | None = Form(None),
     ai_provider: str = Form("ollama"),
@@ -220,6 +222,7 @@ def save_settings(
     database.save_setting("owner_telegram_id", owner_telegram_id.strip())
     database.save_setting("bdevices_search_url", bdevices_search_url.strip())
     database.save_setting("bdevices_taxonomies_url", bdevices_taxonomies_url.strip())
+    database.save_setting("bdevices_device_url_template", bdevices_device_url_template.strip())
     database.save_setting("bdevices_ai_query_enabled", "1" if bdevices_ai_query_enabled else "0")
     database.save_setting("ai_provider", ai_provider.strip() or "ollama")
     database.save_setting("ollama_base_url", ollama_base_url.strip())

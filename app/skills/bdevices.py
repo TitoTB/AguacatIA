@@ -2,12 +2,14 @@ import html
 import json
 import re
 import unicodedata
+from urllib.parse import quote
 
 import httpx
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from app import database
 from app.skills.base import SkillContext, SkillDefinition
+from app.telegram_html import answer_html, answer_photo_html
 
 
 class BDevicesSearchSkill:
@@ -26,6 +28,29 @@ class BDevicesSearchSkill:
             "busco un sensor",
             "recomiendame un sensor",
         ],
+        variables={
+            "name": "Nombre del dispositivo",
+            "wordpress_id": "ID WordPress del dispositivo",
+            "device_url": "URL de la ficha del dispositivo en Aguacatec",
+            "description": "Descripcion del dispositivo",
+            "brand": "Marca",
+            "categories": "Categorias",
+            "protocols": "Protocolos",
+            "integration_type": "Tipo de integracion",
+            "local_function": "Funcion local",
+            "battery": "Bateria",
+            "difficulty": "Dificultad",
+            "rating": "Rating sin decimales",
+            "price": "Mejor precio",
+            "best_platform": "Tienda/plataforma del mejor precio",
+            "best_url": "URL del mejor precio",
+            "image": "Imagen del dispositivo",
+            "query": "Consulta original del usuario",
+            "taxonomies": "Taxonomias sincronizadas para el prompt IA",
+            "command": "Comando actual de la skill",
+            "status_code": "Codigo HTTP de error",
+            "error": "Detalle del error",
+        },
         messages={
             "empty_query": {
                 "label": "Mensaje sin consulta",
@@ -49,7 +74,7 @@ class BDevicesSearchSkill:
             },
             "caption_template": {
                 "label": "Caption de resultado",
-                "default": "<b>{name}</b>\n\n{description}\n\n<b>Caracteristicas</b>\nMarca: {brand}\nCategorias: {categories}\nProtocolos: {protocols}\nIntegracion: {integration_type}\nFuncion: {local_function}\nBateria: {battery}\nDificultad: {difficulty}\nRating: {rating}\n\n<b>Precio:</b> {price}",
+                "default": "<b>{name}</b>\n\n{description}\n\n<b>Caracteristicas</b>\nMarca: {brand}\nCategorias: {categories}\nProtocolos: {protocols}\nIntegracion: {integration_type}\nFuncion: {local_function}\nBateria: {battery}\nDificultad: {difficulty}\nRating: {rating}\n\n<b>Precio:</b> {price}\n<b>Ficha:</b> {device_url}",
             },
             "button_text": {
                 "label": "Texto del boton",
@@ -71,13 +96,13 @@ class BDevicesSearchSkill:
         skill_row = database.get_skill(self.definition.key)
         command = skill_row["command"] if skill_row else self.definition.command
         if not query:
-            await context.message.answer(_render_template(_message(self.definition.key, "empty_query"), {"command": command}))
+            await answer_html(context.message, _render_template(_message(self.definition.key, "empty_query"), {"command": _escape(command)}))
             return
 
         settings = database.settings_map()
         url = settings.get("bdevices_search_url", "").strip()
         if not url:
-            await context.message.answer(_message(self.definition.key, "missing_config"))
+            await answer_html(context.message, _message(self.definition.key, "missing_config"))
             return
 
         headers = {}
@@ -92,21 +117,22 @@ class BDevicesSearchSkill:
                 response.raise_for_status()
                 data = response.json()
         except httpx.HTTPStatusError as exc:
-            await context.message.answer(
-                _render_template(_message(self.definition.key, "http_error"), {"status_code": exc.response.status_code})
+            await answer_html(
+                context.message,
+                _render_template(_message(self.definition.key, "http_error"), {"status_code": exc.response.status_code}),
             )
             return
         except Exception as exc:
-            await context.message.answer(_render_template(_message(self.definition.key, "request_error"), {"error": exc}))
+            await answer_html(context.message, _render_template(_message(self.definition.key, "request_error"), {"error": _escape(exc)}))
             return
 
         results = data.get("results") or []
         if not results:
-            await context.message.answer(_message(self.definition.key, "no_results"))
+            await answer_html(context.message, _message(self.definition.key, "no_results"))
             return
 
         for item in results[:1]:
-            await _send_device_result(context, item)
+            await _send_device_result(context, item, settings)
 
 
 async def _build_search_payload(query: str, settings: dict[str, str]) -> dict:
@@ -279,39 +305,40 @@ def _normalize_payload_value(key: str, value: object) -> str:
     return text
 
 
-async def _send_device_result(context: SkillContext, item: dict) -> None:
-    values = _device_values(item)
+async def _send_device_result(context: SkillContext, item: dict, settings: dict[str, str]) -> None:
+    values = _device_values(item, settings)
     caption = _render_template(_message(BDevicesSearchSkill.definition.key, "caption_template"), values)
     keyboard = None
     if values["best_url"]:
+        button_text = _render_template(_message(BDevicesSearchSkill.definition.key, "button_text"), values)
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text=_message(BDevicesSearchSkill.definition.key, "button_text"),
+                        text=_trim_text(button_text, 64),
                         url=values["best_url"],
                     )
                 ],
             ]
         )
     if values["image"]:
-        await context.message.answer_photo(
+        await answer_photo_html(
+            context.message,
             photo=values["image"],
             caption=_trim_text(caption, 1024),
-            parse_mode="HTML",
             reply_markup=keyboard,
         )
         return
 
-    await context.message.answer(
+    await answer_html(
+        context.message,
         f"{_message(BDevicesSearchSkill.definition.key, 'fallback_image_message')}\n\n{_trim_text(caption, 3500)}",
-        parse_mode="HTML",
         reply_markup=keyboard,
         disable_web_page_preview=True,
     )
 
 
-def _device_values(item: dict) -> dict[str, str]:
+def _device_values(item: dict, settings: dict[str, str] | None = None) -> dict[str, str]:
     best = item.get("best_option") or {}
     options = item.get("shopping_options") or item.get("options") or []
     if not best and options:
@@ -319,22 +346,61 @@ def _device_values(item: dict) -> dict[str, str]:
     currency = (best.get("currency") if best else None) or item.get("currency") or "EUR"
     price = _format_price(best.get("price") if best else item.get("best_price"), currency)
     best_url = (best.get("url") if best else "") or item.get("best_url") or item.get("url") or ""
+    wordpress_id = str(item.get("wordpress_id") or "")
+    device_url = _device_url(item, settings or {})
     return {
         "name": _escape(item.get("title") or item.get("name") or "Dispositivo"),
+        "wordpress_id": _escape(wordpress_id),
+        "device_url": _escape(device_url),
         "description": _escape(item.get("description") or ""),
-        "brand": _escape(item.get("brand") or ""),
-        "categories": _escape(_join_list(item.get("categories") or item.get("category"))),
-        "protocols": _escape(_join_list(item.get("protocols") or item.get("protocol"))),
-        "integration_type": _escape(item.get("integration_type") or ""),
-        "local_function": _escape(item.get("local_function") or ""),
-        "battery": _escape(item.get("battery") or ""),
-        "difficulty": _escape(item.get("difficulty") or ""),
+        "brand": _escape(_capitalize_terms(item.get("brand") or "")),
+        "categories": _escape(_capitalize_terms(_join_list(item.get("categories") or item.get("category")))),
+        "protocols": _escape(_capitalize_terms(_join_list(item.get("protocols") or item.get("protocol")))),
+        "integration_type": _escape(_capitalize_terms(item.get("integration_type") or "")),
+        "local_function": _escape(_capitalize_terms(item.get("local_function") or "")),
+        "battery": _escape(_capitalize_terms(item.get("battery") or "")),
+        "difficulty": _escape(_capitalize_terms(item.get("difficulty") or "")),
         "rating": _escape(_format_rating(item.get("rating"))),
         "price": _escape(price),
-        "best_platform": _escape(item.get("best_platform") or (best.get("label") if best else "") or ""),
+        "best_platform": _escape(_capitalize_terms(item.get("best_platform") or (best.get("label") if best else "") or "")),
         "best_url": str(best_url),
         "image": str(item.get("image") or ""),
     }
+
+
+def _device_url(item: dict, settings: dict[str, str]) -> str:
+    direct = (
+        item.get("device_url")
+        or item.get("wordpress_url")
+        or item.get("permalink")
+        or item.get("public_device_url")
+    )
+    if direct:
+        return str(direct)
+    wordpress_id = str(item.get("wordpress_id") or "").strip()
+    if not wordpress_id:
+        return ""
+    template = (settings.get("bdevices_device_url_template") or "").strip()
+    if not template:
+        return ""
+    values = {
+        "id": str(item.get("id") or ""),
+        "wordpress_id": wordpress_id,
+        "name": str(item.get("title") or item.get("name") or ""),
+        "slug": _slugify(str(item.get("slug") or item.get("title") or item.get("name") or "")),
+    }
+    try:
+        return template.format_map(_UrlValues(values))
+    except Exception:
+        return ""
+
+
+class _UrlValues(dict):
+    def __missing__(self, key):
+        return ""
+
+    def __getitem__(self, key):
+        return quote(str(super().__getitem__(key)), safe="-._~:/?#[]@!$&'()*+,;=")
 
 
 def _message(skill_key: str, message_key: str) -> str:
@@ -361,6 +427,25 @@ def _join_list(value: object) -> str:
     if isinstance(value, list):
         return ", ".join(str(item) for item in value if item)
     return str(value or "")
+
+
+def _capitalize_terms(value: object) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    return ", ".join(_capitalize_first(part.strip()) for part in text.split(",") if part.strip())
+
+
+def _capitalize_first(value: str) -> str:
+    if not value:
+        return ""
+    return value[0].upper() + value[1:]
+
+
+def _slugify(value: str) -> str:
+    normalized = _normalize(value)
+    slug = re.sub(r"[^a-z0-9]+", "-", normalized).strip("-")
+    return slug
 
 
 def _trim_text(value: str, limit: int) -> str:
