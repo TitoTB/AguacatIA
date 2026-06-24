@@ -256,6 +256,34 @@ td span { color: var(--muted); font-size: 12px; }
 }
 .status-pill.ok { background: #e7f7ed; color: #136c3c; }
 .status-pill.off { background: #fff0eb; color: #7a271a; }
+.filter-row,
+.event-actions {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr 1fr auto;
+}
+.event-actions { grid-template-columns: 1fr auto auto auto; }
+.improvement-event { gap: 14px; }
+.event-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+.event-header span,
+.muted {
+  color: var(--muted);
+}
+.event-json-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.event-json-grid textarea {
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+}
 .back-link {
   color: var(--accent);
   display: inline-flex;
@@ -304,6 +332,9 @@ td span { color: var(--muted); font-size: 12px; }
   .inline-form { grid-template-columns: 1fr; }
   .inline-form.compact { grid-template-columns: 1fr; }
   .form-grid { grid-template-columns: 1fr; }
+  .filter-row,
+  .event-actions,
+  .event-json-grid { grid-template-columns: 1fr; }
   .skill-card-header { flex-direction: column; }
   .skill-block { align-items: flex-start; flex-direction: column; }
   .skill-meta { align-items: flex-start; }

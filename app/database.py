@@ -8,6 +8,8 @@ from app.config import DATA_DIR, DB_PATH
 
 
 PUBLIC_LEVEL_SLUG = "public"
+OLD_BDEVICES_DEVICE_URL_TEMPLATE = "https://aguacatec.es/?p={wordpress_id}"
+DEFAULT_BDEVICES_DEVICE_URL_TEMPLATE = "https://lightgray-stingray-432599.hostingersite.com/ha-devices/{slug}/"
 
 
 def utc_now() -> str:
@@ -100,10 +102,25 @@ def init_db() -> None:
                 updated_at TEXT NOT NULL,
                 PRIMARY KEY(kind, value)
             );
+
+            CREATE TABLE IF NOT EXISTS improvement_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                skill_key TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                query TEXT NOT NULL DEFAULT '',
+                payload_json TEXT NOT NULL DEFAULT '{}',
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                telegram_id TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'pending',
+                notes TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                reviewed_at TEXT NOT NULL DEFAULT ''
+            );
             """
         )
         _seed_levels(conn)
         _seed_settings(conn)
+        _migrate_settings(conn)
 
 
 def _seed_levels(conn: sqlite3.Connection) -> None:
@@ -128,7 +145,7 @@ def _seed_settings(conn: sqlite3.Connection) -> None:
         "owner_telegram_id": "",
         "bdevices_search_url": "http://bdevices:8010/api/agent/devices/search",
         "bdevices_taxonomies_url": "http://bdevices:8010/api/agent/devices/taxonomies",
-        "bdevices_device_url_template": "https://aguacatec.es/?p={wordpress_id}",
+        "bdevices_device_url_template": DEFAULT_BDEVICES_DEVICE_URL_TEMPLATE,
         "bdevices_agent_token": "",
         "bdevices_ai_query_enabled": "0",
         "bdevices_taxonomies_last_sync": "",
@@ -146,6 +163,19 @@ def _seed_settings(conn: sqlite3.Connection) -> None:
             "INSERT OR IGNORE INTO settings(key, value, is_secret, updated_at) VALUES (?, ?, ?, ?)",
             (key, value, is_secret, now),
         )
+
+
+def _migrate_settings(conn: sqlite3.Connection) -> None:
+    now = utc_now()
+    conn.execute(
+        """
+        UPDATE settings
+        SET value = ?, updated_at = ?
+        WHERE key = 'bdevices_device_url_template'
+          AND value = ?
+        """,
+        (DEFAULT_BDEVICES_DEVICE_URL_TEMPLATE, now, OLD_BDEVICES_DEVICE_URL_TEMPLATE),
+    )
 
 
 def settings_map(include_secrets: bool = True) -> dict[str, str]:
@@ -497,6 +527,85 @@ def recent_logs(limit: int = 50) -> list[sqlite3.Row]:
         return conn.execute("SELECT * FROM command_log ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
 
 
+def log_improvement_event(
+    skill_key: str,
+    event_type: str,
+    query: str = "",
+    payload: Any | None = None,
+    metadata: Any | None = None,
+    telegram_id: str = "",
+) -> None:
+    with connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO improvement_events(
+                skill_key, event_type, query, payload_json, metadata_json, telegram_id, status, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+            """,
+            (
+                skill_key,
+                event_type,
+                str(query or ""),
+                _json_dumps(payload or {}),
+                _json_dumps(metadata or {}),
+                str(telegram_id or ""),
+                utc_now(),
+            ),
+        )
+
+
+def list_improvement_events(status: str = "pending", skill_key: str = "", limit: int = 200) -> list[sqlite3.Row]:
+    clauses = []
+    params: list[Any] = []
+    if status and status != "all":
+        clauses.append("status = ?")
+        params.append(status)
+    if skill_key:
+        clauses.append("skill_key = ?")
+        params.append(skill_key)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    limit = min(max(int(limit or 200), 1), 500)
+    with connect() as conn:
+        return conn.execute(
+            f"""
+            SELECT *
+            FROM improvement_events
+            {where}
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (*params, limit),
+        ).fetchall()
+
+
+def improvement_event_summary() -> list[sqlite3.Row]:
+    with connect() as conn:
+        return conn.execute(
+            """
+            SELECT skill_key, event_type, status, COUNT(*) AS total
+            FROM improvement_events
+            GROUP BY skill_key, event_type, status
+            ORDER BY total DESC, skill_key, event_type
+            """
+        ).fetchall()
+
+
+def update_improvement_event(event_id: int, status: str, notes: str = "") -> None:
+    if status not in {"pending", "reviewed", "ignored"}:
+        status = "pending"
+    reviewed_at = utc_now() if status in {"reviewed", "ignored"} else ""
+    with connect() as conn:
+        conn.execute(
+            """
+            UPDATE improvement_events
+            SET status = ?, notes = ?, reviewed_at = ?
+            WHERE id = ?
+            """,
+            (status, str(notes or ""), reviewed_at, event_id),
+        )
+
+
 def replace_bdevices_taxonomies(taxonomies: dict[str, list[str]]) -> int:
     now = utc_now()
     rows = [
@@ -545,6 +654,15 @@ def bdevices_taxonomies_summary() -> dict[str, int]:
             "SELECT kind, COUNT(*) AS count FROM bdevices_taxonomies GROUP BY kind ORDER BY kind"
         ).fetchall()
     return {row["kind"]: int(row["count"]) for row in rows}
+
+
+def _json_dumps(value: Any) -> str:
+    import json
+
+    try:
+        return json.dumps(value, ensure_ascii=False, sort_keys=True)
+    except TypeError:
+        return json.dumps(str(value), ensure_ascii=False)
 
 
 def _normalize_taxonomy(value: object) -> str:

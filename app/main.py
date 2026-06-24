@@ -201,6 +201,42 @@ def logs_page(request: Request, _: None = Depends(require_admin)):
     return templates.TemplateResponse("logs.html", {"request": request, "logs": database.recent_logs(100)})
 
 
+@app.get("/improvement")
+def improvement_page(
+    request: Request,
+    _: None = Depends(require_admin),
+    status: str = "pending",
+    skill_key: str = "",
+):
+    return templates.TemplateResponse(
+        "improvement.html",
+        {
+            "request": request,
+            "events": database.list_improvement_events(status=status, skill_key=skill_key),
+            "summary": database.improvement_event_summary(),
+            "status": status,
+            "skill_key": skill_key,
+            "skills": database.list_skills(),
+        },
+    )
+
+
+@app.post("/improvement/{event_id}/status")
+def update_improvement_status(
+    event_id: int,
+    _: None = Depends(require_admin),
+    status: str = Form("pending"),
+    notes: str = Form(""),
+    current_status: str = Form("pending"),
+    current_skill_key: str = Form(""),
+):
+    database.update_improvement_event(event_id, status, notes)
+    suffix = f"?status={current_status}"
+    if current_skill_key:
+        suffix += f"&skill_key={current_skill_key}"
+    return redirect(f"/improvement{suffix}")
+
+
 @app.post("/settings")
 def save_settings(
     _: None = Depends(require_admin),

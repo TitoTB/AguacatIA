@@ -31,6 +31,7 @@ class BDevicesSearchSkill:
         variables={
             "name": "Nombre del dispositivo",
             "wordpress_id": "ID WordPress del dispositivo",
+            "slug": "Slug publico de la ficha",
             "device_url": "URL de la ficha del dispositivo en Aguacatec",
             "description": "Descripcion del dispositivo",
             "brand": "Marca",
@@ -111,27 +112,61 @@ class BDevicesSearchSkill:
             headers["X-BDevices-Agent-Token"] = token
 
         payload = await _build_search_payload(query, settings)
+        telegram_id = str(context.message.from_user.id) if context.message.from_user else ""
         try:
             async with httpx.AsyncClient(timeout=20) as client:
                 response = await client.post(url, json=payload, headers=headers)
                 response.raise_for_status()
                 data = response.json()
         except httpx.HTTPStatusError as exc:
+            _log_improvement(
+                "http_error",
+                query,
+                payload,
+                {"status_code": exc.response.status_code, "url": url},
+                telegram_id,
+            )
             await answer_html(
                 context.message,
                 _render_template(_message(self.definition.key, "http_error"), {"status_code": exc.response.status_code}),
             )
             return
         except Exception as exc:
+            _log_improvement(
+                "request_error",
+                query,
+                payload,
+                {"error": str(exc), "url": url},
+                telegram_id,
+            )
             await answer_html(context.message, _render_template(_message(self.definition.key, "request_error"), {"error": _escape(exc)}))
             return
 
         results = data.get("results") or []
         if not results:
+            _log_improvement(
+                "no_results",
+                query,
+                payload,
+                {"count": data.get("count", 0), "source": "bdevices"},
+                telegram_id,
+            )
             await answer_html(context.message, _message(self.definition.key, "no_results"))
             return
 
         for item in results[:1]:
+            if _device_url_uses_slug_fallback(item, settings):
+                _log_improvement(
+                    "device_url_fallback",
+                    query,
+                    payload,
+                    {
+                        "product_id": item.get("id"),
+                        "wordpress_id": item.get("wordpress_id"),
+                        "name": item.get("name") or item.get("title"),
+                    },
+                    telegram_id,
+                )
             await _send_device_result(context, item, settings)
 
 
@@ -347,10 +382,13 @@ def _device_values(item: dict, settings: dict[str, str] | None = None) -> dict[s
     price = _format_price(best.get("price") if best else item.get("best_price"), currency)
     best_url = (best.get("url") if best else "") or item.get("best_url") or item.get("url") or ""
     wordpress_id = str(item.get("wordpress_id") or "")
+    slug = str(item.get("slug") or item.get("wordpress_slug") or "").strip()
     device_url = _device_url(item, settings or {})
+    best_platform = _best_platform_label(item, best)
     return {
         "name": _escape(item.get("title") or item.get("name") or "Dispositivo"),
         "wordpress_id": _escape(wordpress_id),
+        "slug": _escape(slug or _slugify(str(item.get("title") or item.get("name") or ""))),
         "device_url": _escape(device_url),
         "description": _escape(item.get("description") or ""),
         "brand": _escape(_capitalize_terms(item.get("brand") or "")),
@@ -362,10 +400,18 @@ def _device_values(item: dict, settings: dict[str, str] | None = None) -> dict[s
         "difficulty": _escape(_capitalize_terms(item.get("difficulty") or "")),
         "rating": _escape(_format_rating(item.get("rating"))),
         "price": _escape(price),
-        "best_platform": _escape(_capitalize_terms(item.get("best_platform") or (best.get("label") if best else "") or "")),
+        "best_platform": _escape(_capitalize_terms(best_platform)),
         "best_url": str(best_url),
         "image": str(item.get("image") or ""),
     }
+
+
+def _best_platform_label(item: dict, best: dict) -> str:
+    platform = str(item.get("best_platform") or best.get("platform") or "").strip()
+    label = str(best.get("label") or "").strip()
+    if _normalize(platform or label) == "official":
+        return str(item.get("brand") or label or platform)
+    return label or platform
 
 
 def _device_url(item: dict, settings: dict[str, str]) -> str:
@@ -383,16 +429,36 @@ def _device_url(item: dict, settings: dict[str, str]) -> str:
     template = (settings.get("bdevices_device_url_template") or "").strip()
     if not template:
         return ""
+    slug = str(item.get("slug") or item.get("wordpress_slug") or "").strip()
     values = {
         "id": str(item.get("id") or ""),
         "wordpress_id": wordpress_id,
         "name": str(item.get("title") or item.get("name") or ""),
-        "slug": _slugify(str(item.get("slug") or item.get("title") or item.get("name") or "")),
+        "slug": slug or _slugify(str(item.get("title") or item.get("name") or "")),
     }
     try:
         return template.format_map(_UrlValues(values))
     except Exception:
         return ""
+
+
+def _device_url_uses_slug_fallback(item: dict, settings: dict[str, str]) -> bool:
+    if item.get("device_url") or item.get("wordpress_url") or item.get("permalink") or item.get("public_device_url"):
+        return False
+    if item.get("slug") or item.get("wordpress_slug"):
+        return False
+    return bool(str(item.get("wordpress_id") or "").strip() and (settings.get("bdevices_device_url_template") or "").strip())
+
+
+def _log_improvement(event_type: str, query: str, payload: dict, metadata: dict, telegram_id: str = "") -> None:
+    database.log_improvement_event(
+        BDevicesSearchSkill.definition.key,
+        event_type,
+        query=query,
+        payload=payload,
+        metadata=metadata,
+        telegram_id=telegram_id,
+    )
 
 
 class _UrlValues(dict):

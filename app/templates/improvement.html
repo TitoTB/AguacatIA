@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="section-heading">
+  <div>
+    <h1>Mejora continua</h1>
+    <p>Consultas y eventos que pueden ayudar a mejorar reglas, prompts y datos.</p>
+  </div>
+</section>
+
+<section class="panel stack">
+  <form method="get" action="/improvement" class="filter-row">
+    <label>Estado
+      <select name="status">
+        <option value="pending" {% if status == "pending" %}selected{% endif %}>Pendientes</option>
+        <option value="reviewed" {% if status == "reviewed" %}selected{% endif %}>Revisados</option>
+        <option value="ignored" {% if status == "ignored" %}selected{% endif %}>Ignorados</option>
+        <option value="all" {% if status == "all" %}selected{% endif %}>Todos</option>
+      </select>
+    </label>
+    <label>Skill
+      <select name="skill_key">
+        <option value="">Todas</option>
+        {% for skill in skills %}
+        <option value="{{ skill.key }}" {% if skill_key == skill.key %}selected{% endif %}>{{ skill.title }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit">Filtrar</button>
+  </form>
+
+  <div class="summary-grid">
+    {% for item in summary %}
+    <div class="metric-card">
+      <span>{{ item.skill_key }} / {{ item.event_type }}</span>
+      <strong>{{ item.total }}</strong>
+      <small>{{ item.status }}</small>
+    </div>
+    {% else %}
+    <p class="muted">Todavia no hay eventos registrados.</p>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="stack">
+  {% for event in events %}
+  <article class="panel improvement-event">
+    <div class="event-header">
+      <div>
+        <strong>{{ event.event_type }}</strong>
+        <span>{{ event.skill_key }} · {{ event.created_at }}</span>
+      </div>
+      <span class="status-pill {{ 'ok' if event.status == 'reviewed' else 'off' if event.status == 'ignored' else '' }}">{{ event.status }}</span>
+    </div>
+    {% if event.query %}
+    <p><strong>Consulta</strong><br>{{ event.query }}</p>
+    {% endif %}
+    <div class="event-json-grid">
+      <label>Payload
+        <textarea readonly rows="7">{{ event.payload_json }}</textarea>
+      </label>
+      <label>Metadata
+        <textarea readonly rows="7">{{ event.metadata_json }}</textarea>
+      </label>
+    </div>
+    <form method="post" action="/improvement/{{ event.id }}/status" class="event-actions">
+      <input type="hidden" name="current_status" value="{{ status }}">
+      <input type="hidden" name="current_skill_key" value="{{ skill_key }}">
+      <label>Notas
+        <input name="notes" value="{{ event.notes }}" placeholder="Decision o mejora propuesta">
+      </label>
+      <button name="status" value="reviewed" type="submit">Marcar revisado</button>
+      <button name="status" value="ignored" type="submit" class="secondary-button">Ignorar</button>
+      <button name="status" value="pending" type="submit" class="secondary-button">Reabrir</button>
+    </form>
+  </article>
+  {% else %}
+  <section class="panel">
+    <p class="muted">No hay eventos con esos filtros.</p>
+  </section>
+  {% endfor %}
+</section>
+{% endblock %}
